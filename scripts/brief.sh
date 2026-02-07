@@ -5,16 +5,9 @@ SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANALYZER_PROMPT="$SKILL_DIR/prompts/analyze.txt"
 BRIEFING_PROMPT="$SKILL_DIR/prompts/briefing.txt"
 
-# Ensure target number is present
-if [ -z "$TARGET_NUMBER" ]; then
-  echo "Error: TARGET_NUMBER is not set."
-  exit 1
-fi
-
-# Ensure token is present
-if [ -z "$READWISE_TOKEN" ]; then
-  echo "Error: READWISE_TOKEN is not set."
-  exit 1
+# Load env vars if present (e.g. TARGET_NUMBER)
+if [ -f "$SKILL_DIR/.env" ]; then
+  source "$SKILL_DIR/.env"
 fi
 
 # 1. Fetch Recent Saves (Last 24h)
@@ -31,10 +24,13 @@ fi
 # Extract titles for analysis
 TITLES=$(echo "$RECENT_JSON" | jq -r '.results[].title')
 
+# Model selection (default to flash for speed, override with GEMINI_MODEL)
+MODEL="${GEMINI_MODEL:-gemini-3-flash-preview}"
+
 # 2. Analyze Topic
-echo "Analyzing reading patterns..."
+echo "Analyzing reading patterns (using $MODEL)..."
 # Using gemini directly with a clean pipe
-QUERY=$(echo -e "SYSTEM: $(cat "$ANALYZER_PROMPT")\n\nARTICLES:\n$TITLES" | gemini -o text 2>/dev/null | tail -n 1 | tr -d '\n')
+QUERY=$(echo -e "SYSTEM: $(cat "$ANALYZER_PROMPT")\n\nARTICLES:\n$TITLES" | gemini -m "$MODEL" -o text 2>/dev/null | tail -n 1 | tr -d '\n')
 
 # If the query is empty or failed, fallback
 if [ -z "$QUERY" ]; then
@@ -61,7 +57,7 @@ GOAL: Provide at least 5 deep dive connections from the archive, ordered by save
 
 # Capture multi-line response
 # We find where the actual content starts (skipping initialization logs)
-BRIEF=$(gemini -o text 2>/dev/null <<EOF
+BRIEF=$(gemini -m "$MODEL" -o text 2>/dev/null <<EOF
 SYSTEM: $(cat "$BRIEFING_PROMPT")
 
 CONTEXT:
@@ -69,10 +65,16 @@ $CONTEXT_DATA
 EOF
 )
 
-# 5. Send Message
+# 5. Output
 if [ -n "$BRIEF" ]; then
-  echo "Delivering to WhatsApp..."
-  clawdbot message send --target "$TARGET_NUMBER" --message "$BRIEF"
+  # If TARGET_NUMBER is set, send via WhatsApp (legacy support)
+  if [ -n "$TARGET_NUMBER" ]; then
+    echo "Delivering to WhatsApp..."
+    clawdbot message send --target "$TARGET_NUMBER" --message "$BRIEF"
+  else
+    # Otherwise, just print to stdout for the agent to capture
+    echo "$BRIEF"
+  fi
 else
   echo "Error: Briefing generation failed (empty response)."
   exit 1
