@@ -53,3 +53,7 @@ You get a high-signal WhatsApp message formatted for mobile readability:
 - `curl`, `jq`
 - `clawdbot` (for LLM inference and WhatsApp delivery)
 - `gemini` CLI (for stateless completion)
+
+---
+
+Part of the open-source tools collection by [Sameer Bajaj](https://sameerbajaj.com). Learn more on the [project page](https://sameerbajaj.com/tools/clawdbot-skills/).
